@@ -1,71 +1,65 @@
-function cqiTable = nrCQITables_Manual(tableID,verbose)
-% nrCQITables  NR CQI Tables with derived SNR thresholds
-% Based on 3GPP TS 38.214
+function cqiTable = nrCQITables_Manual(tableID, verbose)
+% nrCQITables
+% Retorna as tabelas oficiais de CQI da 3GPP TS 38.214
 %
 % tableID:
-%   1 -> Table 5.2.2.1-2 (até 64QAM)
-%   2 -> Table 5.2.2.1-3 (inclui 256QAM)
+%   1 → Table 5.2.2.1-1 (até 64QAM)
+%   2 → Table 5.2.2.1-2 (até 256QAM – eMBB)
+%   3 → Table 5.2.2.1-3 (até 256QAM – robusta)
 %
-% SNR thresholds computed via Shannon approximation
+% verbose:
+%   true  → imprime tabela formatada
+%   false → não imprime
 
-if nargin < 1
-    tableID = 1;
+if nargin < 2
+    verbose = false;
 end
 
-CQI = (0:15).';
-
-% ================================
-% CQI 1–15 values (OFICIAIS)
-% ================================
-
-Qm_15 = [ ...
-    2 2 2 2 2 2 ...
-    4 4 4 4 ...
-    6 6 6 6 6];
-
-R1024_15 = [ ...
-     78 193 449 378 490 616 ...
-    466 567 666 772 ...
-    873 948 711 797 885];
+CQI = (0:15)';
 
 switch tableID
-    
+
+    % ==============================================================
     case 1
-        Qm_15(end) = 6; % 64QAM
-        
+        % 3GPP TS 38.214 - Table 5.2.2.1-1
+        % Cenário: até 64QAM (configuração padrão)
+
+        Qm = [0;2;2;2;4;4;4;6;6;6;6;6;6;6;6;6];
+        R1024 = [0;78;193;449;378;490;616;466;567;666;772;873;948;948;948;948];
+
+    % ==============================================================
     case 2
-        Qm_15(end) = 8; % 256QAM
-        
+        % 3GPP TS 38.214 - Table 5.2.2.1-2
+        % Cenário: 256QAM habilitado (eMBB alta taxa)
+
+        Qm = [0;2;2;2;4;4;4;6;6;6;6;6;8;8;8;8];
+        R1024 = [0;78;193;449;378;490;616;466;567;666;772;873;711;797;885;948];
+
+    % ==============================================================
+    case 3
+        % 3GPP TS 38.214 - Table 5.2.2.1-3
+        % Cenário: perfil mais robusto
+
+        Qm = [0;2;2;2;2;4;4;4;6;6;6;6;6;8;8;8];
+        R1024 = [0;78;120;193;308;449;602;378;490;616;466;567;666;772;873;948];
+
     otherwise
-        error('Use tableID = 1 or 2');
+        error('tableID deve ser 1, 2 ou 3');
 end
 
-% Add CQI 0
-Qm    = [0 Qm_15].';
-R1024 = [0 R1024_15].';
+% ==============================================================
+% Cálculos
+% ==============================================================
 
-R  = R1024 / 1024;
-SE = Qm .* R;
+CodeRate = R1024 / 1024;
+SpectralEfficiency = Qm .* CodeRate;
 
-% ==========================================
-% Derive SNR thresholds (Shannon-based)
-% ==========================================
+% SNR aproximado via Shannon
+SNR_linear = 2.^SpectralEfficiency - 1;
+SNR_dB = 10*log10(SNR_linear);
+SNR_dB(1) = -Inf; % CQI 0
 
-SNR_linear = zeros(size(SE));
-SNR_dB     = zeros(size(SE));
-
-for i = 1:length(SE)
-    
-    if SE(i) == 0
-        SNR_linear(i) = 0;
-        SNR_dB(i)     = -Inf;
-    else
-        SNR_linear(i) = 2^(SE(i)) - 1;
-        SNR_dB(i)     = 10*log10(SNR_linear(i));
-    end
-end
-
-% Modulation names
+% Nome da modulação
 Modulation = strings(16,1);
 for i = 1:16
     switch Qm(i)
@@ -82,36 +76,33 @@ for i = 1:16
     end
 end
 
-% Output struct
-cqiTable = struct();
-cqiTable.CQI                = CQI;
-cqiTable.Modulation         = Modulation;
-cqiTable.Modulation_Order_Qm= Qm;
-cqiTable.Target_CodeRate    = R;
-cqiTable.Target_CodeRate_x1024 = R1024;
-cqiTable.Spectral_Efficiency_bits_per_Hz = SE;
-cqiTable.SNR_Threshold_linear = SNR_linear;
-cqiTable.SNR_Threshold_dB     = SNR_dB;
+% ==============================================================
+% Tabela final
+% ==============================================================
 
-
-
-if verbose
-T = table( ...
-    cqiTable.CQI, ...
-    cqiTable.Modulation, ...
-    cqiTable.Modulation_Order_Qm, ...
-    cqiTable.Target_CodeRate, ...
-    cqiTable.Spectral_Efficiency_bits_per_Hz, ...
-    cqiTable.SNR_Threshold_dB, ...
-    'VariableNames',{ ...
-    'CQI_Index', ...
+cqiTable = table( ...
+    CQI, ...
+    Modulation, ...
+    Qm, ...
+    CodeRate, ...
+    R1024, ...
+    SpectralEfficiency, ...
+    SNR_dB, ...
+    'VariableNames', { ...
+    'CQI', ...
     'Modulation', ...
-    'Qm', ...
-    'CodeRate', ...
-    'SpectralEfficiency', ...
+    'Modulation_Order_Qm', ...
+    'Target_CodeRate', ...
+    'Target_CodeRate_x1024', ...
+    'Spectral_Efficiency_bits_per_Hz', ...
     'SNR_Threshold_dB'});
 
-disp(T)
+% ==============================================================
+% Impressão controlada por verbose
+% ==============================================================
+
+if verbose
+    disp(cqiTable)
 end
 
 end
